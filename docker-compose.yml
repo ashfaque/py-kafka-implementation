@@ -1,0 +1,246 @@
+# version: '3.8'
+
+services:
+  # ─────────────────────────────────── ZOOKEEPER CLUSTER ──────────────────────────────────
+  zookeeper1:
+    image: confluentinc/cp-zookeeper:7.7.4
+    hostname: zookeeper1
+    container_name: zookeeper1
+    ports:
+      - "2181:2181"  # client
+      - "2888:2888"  # quorum
+      - "3888:3888"  # leader election
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_SERVERS: "zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888"
+    volumes:
+      - ./.volumes/zk1_data:/var/lib/zookeeper/data
+      - ./.volumes/zk1_log:/var/lib/zookeeper/log
+    networks:
+      - kafka-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "zkOk 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  zookeeper2:
+    image: confluentinc/cp-zookeeper:7.7.4
+    hostname: zookeeper2
+    container_name: zookeeper2
+    ports:
+      - "2182:2181"
+      - "2889:2888"
+      - "3889:3888"
+    environment:
+      ZOOKEEPER_SERVER_ID: 2
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_SERVERS: "zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888"
+    volumes:
+      - ./.volumes/zk2_data:/var/lib/zookeeper/data
+      - ./.volumes/zk2_log:/var/lib/zookeeper/log
+    networks:
+      - kafka-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "zkOk 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  zookeeper3:
+    image: confluentinc/cp-zookeeper:7.7.4
+    hostname: zookeeper3
+    container_name: zookeeper3
+    ports:
+      - "2183:2181"
+      - "2890:2888"
+      - "3890:3888"
+    environment:
+      ZOOKEEPER_SERVER_ID: 3
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_SERVERS: "zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888"
+    volumes:
+      - ./.volumes/zk3_data:/var/lib/zookeeper/data
+      - ./.volumes/zk3_log:/var/lib/zookeeper/log
+    networks:
+      - kafka-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "zkOk 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────── KAFKA BROKERS ───────────────────────────────────
+  kafka1:
+    image: confluentinc/cp-kafka:7.7.4
+    hostname: kafka1
+    container_name: kafka1
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    ports:
+      - "9092:9092"   # external client
+      - "29092:29092" # inter-broker
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper1:2181,zookeeper2:2181,zookeeper3:2181"
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka1:29092,EXTERNAL://localhost:9092"
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_LISTENER_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_INTERNAL_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_EXTERNAL_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_INTERNAL: PLAINTEXT://kafka1:29092
+      KAFKA_LISTENER_NAME_EXTERNAL: PLAINTEXT://localhost:9092
+      KAFKA_MESSAGE_MAX_BYTES: 209715200  # 200MB
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 209715200  # 200MB
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - ./.volumes/k1_data:/var/lib/kafka/data
+    networks:
+      - kafka-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka1:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.7.4
+    hostname: kafka2
+    container_name: kafka2
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    ports:
+      - "9093:9092"
+      - "29093:29092"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper1:2181,zookeeper2:2181,zookeeper3:2181"
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka2:29092,EXTERNAL://localhost:9093"
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_LISTENER_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_INTERNAL_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_EXTERNAL_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_INTERNAL: PLAINTEXT://kafka2:29092
+      KAFKA_LISTENER_NAME_EXTERNAL: PLAINTEXT://localhost:9093
+      KAFKA_MESSAGE_MAX_BYTES: 209715200  # 200MB
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 209715200  # 200MB
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - ./.volumes/k2_data:/var/lib/kafka/data
+    networks:
+      - kafka-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka2:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.7.4
+    hostname: kafka3
+    container_name: kafka3
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    ports:
+      - "9094:9092"
+      - "29094:29092"
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper1:2181,zookeeper2:2181,zookeeper3:2181"
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka3:29092,EXTERNAL://localhost:9094"
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_LISTENER_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_INTERNAL_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_EXTERNAL_SECURITY_PROTOCOL: "PLAINTEXT"
+      KAFKA_LISTENER_NAME_INTERNAL: PLAINTEXT://kafka3:29092
+      KAFKA_LISTENER_NAME_EXTERNAL: PLAINTEXT://localhost:9094
+      KAFKA_MESSAGE_MAX_BYTES: 209715200  # 200MB
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 209715200  # 200MB
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - ./.volumes/k3_data:/var/lib/kafka/data
+    networks:
+      - kafka-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka3:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+    ports:
+      - "8080:8080"  # Kafka UI Port
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka1:9092,kafka2:9092,kafka3:9092"
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zookeeper1:2181,zookeeper2:2181,zookeeper3:2181"
+    networks:
+      - kafka-net
+    restart: unless-stopped
+
+
+# ─────────────────────────────────────────────────────────── VOLUMES ───────────────────────────────────────────────────────────
+volumes:
+  zk1_data: {}
+  zk1_log: {}
+  zk2_data: {}
+  zk2_log: {}
+  zk3_data: {}
+  zk3_log: {}
+  k1_data: {}
+  k2_data: {}
+  k3_data: {}
+
+networks:
+  kafka-net:
+    driver: bridge
+    # ipam:
+    #   driver: default
+    #   config:
+    #     - subnet: 172.20.0.0/16
