@@ -109,3 +109,127 @@ If you'd like to run Kafka **without ZooKeeper**, look into:
 That's the future architecture—ZooKeeper‑less Kafka—but the concepts you learn here carry right over, just with Kafka's own built‑in controller quorum.
 
 ---
+## Topics, Partitions, and Offsets
+
+### What is a **Topic**?
+
+A **Topic** in Kafka is like a category or a "folder" where messages are published. Producers **write** data to topics, and consumers **read** data from them.
+
+> Think of a Topic as a **channel** in pub-sub architecture.
+
+#### Example:
+
+* You create a topic named `user_created`
+* Every time a new user registers, your producer sends user data to this topic
+* One or more consumers read from this topic to take actions like:
+
+  * Send welcome emails
+  * Sync user data to other services
+
+### What is a **Partition**?
+
+A **Partition** is a way to **split a topic** into multiple parts for scalability and parallelism. Each topic can have **one or more partitions**.
+
+* Messages within a partition are **strictly ordered**.
+* Partitions are how Kafka **scales horizontally**.
+* Each partition is stored on a single Kafka broker.
+
+> Think of partitions as **lanes on a highway** — more lanes mean more cars (messages) can move in parallel.
+
+#### Example:
+
+If `user_created` topic has **3 partitions**, Kafka will distribute messages across these partitions.
+
+```plaintext
+user_created (topic)
+ ├── Partition 0: [msg1, msg4, msg7]
+ ├── Partition 1: [msg2, msg5, msg8]
+ └── Partition 2: [msg3, msg6, msg9]
+```
+
+
+### What is an **Offset**?
+
+An **Offset** is the unique ID of a message **within a partition**. It acts like a line number in a notebook.
+
+* Offsets are always **per partition**.
+* They help Kafka **track the position** of a consumer.
+* Consumers commit offsets after reading messages, so they know where to resume.
+
+> Think of offset as the **index** of a message within a partition.
+
+#### Example:
+
+If `Partition 1` of `user_created` topic has:
+
+```plaintext
+Offset 0: {"id": 1, "name": "Alice"}
+Offset 1: {"id": 2, "name": "Bob"}
+Offset 2: {"id": 3, "name": "Charlie"}
+```
+
+### How It Works When Sending and Receiving
+
+#### Sending a Message (Producer Side)
+
+```python
+from kafka import KafkaProducer
+import json
+
+producer = KafkaProducer(
+    bootstrap_servers="localhost:9092",
+    value_serializer=lambda v: json.dumps(v).encode("utf-8")
+)
+
+producer.send("user_created", {"id": 1, "name": "Alice"})
+producer.flush()
+```
+
+Kafka will:
+
+* Select a partition (round robin by default or based on key)
+* Store the message in that partition
+* Assign an offset (e.g., `Offset 0` in `Partition 1`)
+
+#### Receiving Messages (Consumer Side)
+
+```python
+from kafka import KafkaConsumer
+import json
+
+consumer = KafkaConsumer(
+    "user_created",
+    bootstrap_servers="localhost:9092",
+    value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+    group_id="user-group"
+)
+
+for message in consumer:
+    print(f"Partition: {message.partition}, Offset: {message.offset}")
+    print(f"Message: {message.value}")
+```
+
+---
+
+### TL;DR Summary
+
+| Concept       | Description                                                                |
+| ------------- | -------------------------------------------------------------------------- |
+| **Topic**     | A category or channel to which messages are sent and read                  |
+| **Partition** | A horizontal split of a topic that enables parallel processing             |
+| **Offset**    | A unique ID for each message within a partition, used to track consumption |
+
+```
+- **Topic**: Logical name for a message stream (e.g., `user_created`)
+- **Partition**: Kafka splits a topic into partitions for scalability and parallel processing
+- **Offset**: Each message in a partition has a unique offset to track its position
+- Producers write messages to topics, Kafka stores them in partitions, and consumers read from those using offsets.
+
+Example Flow:
+1. Producer sends a user registration event to topic `user_created`
+2. Kafka stores the event in Partition 1, Offset 7
+3. Consumer reads the message using the topic + partition + offset combo
+```
+
+---
+
